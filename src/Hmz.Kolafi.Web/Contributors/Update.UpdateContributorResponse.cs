@@ -1,6 +1,6 @@
 ﻿namespace Hmz.Kolafi.Web.Contributors;
 
-public class UpdateContributorResponse(ContributorRecord contributor)
+public class UpdateContributorResponse(ContributorUpdatedRecord contributor)
 {
-  public ContributorRecord Contributor { get; set; } = contributor;
+  public ContributorUpdatedRecord Contributor { get; set; } = contributor;
 }

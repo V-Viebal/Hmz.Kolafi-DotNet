@@ -26,7 +26,7 @@ public class Update(IMediator mediator)
       s.Summary = "Update a contributor";
       s.Description = "Updates an existing contributor's information. The contributor name must be between 2 and 100 characters long.";
       s.ExampleRequest = new UpdateContributorRequest { Id = 1, Name = "Updated Name" };
-      s.ResponseExamples[200] = new UpdateContributorResponse(new ContributorRecord(1, "Updated Name", ""));
+      s.ResponseExamples[200] = new UpdateContributorResponse(new ContributorUpdatedRecord(1, "Updated Name"));
 
       // Document possible responses
       s.Responses[200] = "Contributor updated successfully";
@@ -62,5 +62,5 @@ public sealed class UpdateContributorMapper
   : Mapper<UpdateContributorRequest, UpdateContributorResponse, ContributorDto>
 {
   public override UpdateContributorResponse FromEntity(ContributorDto e)
-    => new(new ContributorRecord(e.Id.Value, e.Name.Value, ""));
+    => new(new ContributorUpdatedRecord(e.Id.Value, e.Name.Value));
 }

@@ -28,8 +28,8 @@ public class Create(IMediator mediator)
     {
       s.Summary = "Create a new contributor";
       s.Description = "Creates a new contributor with the provided name. The contributor name must be between 2 and 100 characters long.";
-      s.ExampleRequest = new CreateContributorRequest { Name = "John Doe" };
-      s.ResponseExamples[201] = new CreateContributorResponse(1, "John Doe");
+      s.ExampleRequest = new CreateContributorRequest { Name = "John Doe", PhoneNumber = "+1 123" };
+      s.ResponseExamples[201] = new CreateContributorResponse(1, "John Doe", "+1 123");
 
       // Document possible responses
       s.Responses[201] = "Contributor created successfully";
@@ -55,7 +55,7 @@ public class Create(IMediator mediator)
 
     return result.ToCreatedResult(
       id => $"/Contributors/{id}",
-      id => new CreateContributorResponse(id.Value, request.Name!));
+      id => new CreateContributorResponse(id.Value, request.Name!, request.PhoneNumber));
   }
 }
 
@@ -80,8 +80,9 @@ public class CreateContributorValidator : Validator<CreateContributorRequest>
   }
 }
 
-public class CreateContributorResponse(int id, string name)
+public class CreateContributorResponse(int id, string name, string? phoneNumber = null)
 {
   public int Id { get; set; } = id;
   public string Name { get; set; } = name;
+  public string? PhoneNumber { get; set; } = phoneNumber;
 }
