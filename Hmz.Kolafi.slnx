@@ -1,0 +1,33 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Folder Name="/Solution Items/">
+    <File Path=".editorconfig" />
+    <File Path=".template.config/template.json" />
+    <File Path="CleanArchitecture.nuspec" />
+    <File Path="Directory.Build.props" />
+    <File Path="Directory.Packages.props" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/Hmz.Kolafi.Core/Hmz.Kolafi.Core.csproj" />
+    <Project Path="src/Hmz.Kolafi.Infrastructure/Hmz.Kolafi.Infrastructure.csproj" />
+    <Project Path="src/Hmz.Kolafi.UseCases/Hmz.Kolafi.UseCases.csproj" />
+    <Project Path="src/Hmz.Kolafi.Web/Hmz.Kolafi.Web.csproj" />
+  </Folder>
+  <Folder Name="/src/_aspire/">
+    <Project Path="src/Hmz.Kolafi.AspireHost/Hmz.Kolafi.AspireHost.csproj" />
+    <Project Path="src/Hmz.Kolafi.ServiceDefaults/Hmz.Kolafi.ServiceDefaults.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Hmz.Kolafi.FunctionalTests/Hmz.Kolafi.FunctionalTests.csproj">
+      <BuildDependency Project="src/Hmz.Kolafi.Web/Hmz.Kolafi.Web.csproj" />
+    </Project>
+    <Project Path="tests/Hmz.Kolafi.IntegrationTests/Hmz.Kolafi.IntegrationTests.csproj">
+      <BuildDependency Project="src/Hmz.Kolafi.Infrastructure/Hmz.Kolafi.Infrastructure.csproj" />
+    </Project>
+    <Project Path="tests/Hmz.Kolafi.UnitTests/Hmz.Kolafi.UnitTests.csproj" />
+  </Folder>
+</Solution>
