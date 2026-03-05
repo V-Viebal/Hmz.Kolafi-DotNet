@@ -211,6 +211,20 @@ public class Create{Entity}Handler(IRepository<{Entity}> _repository)
 public record {Entity}DTO(int Id, string Name);
 ```
 
+**Utility classes** (project root):
+```csharp
+// Constants.cs
+namespace {PREFIX}.{PROJECT}.UseCases;
+public static class Constants
+{
+    public const int DEFAULT_PAGE_SIZE = 10;
+}
+
+// PagedResult.cs
+namespace {PREFIX}.{PROJECT}.UseCases;
+public record PagedResult<T>(List<T> Items, int TotalCount, int PageNumber, int PageSize);
+```
+
 **GlobalUsings.cs** (UseCases):
 ```csharp
 global using Ardalis.Result;

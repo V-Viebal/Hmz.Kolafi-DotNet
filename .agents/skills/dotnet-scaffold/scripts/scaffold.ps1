@@ -6,9 +6,9 @@
 .PARAMETER Root         Root output dir (defaults to current directory)
 #>
 param(
-    [Parameter(Mandatory)][string]$Prefix,
-    [Parameter(Mandatory)][string]$Project,
-    [string]$Root = "."
+  [Parameter(Mandatory)][string]$Prefix,
+  [Parameter(Mandatory)][string]$Project,
+  [string]$Root = "."
 )
 
 $ns = "$Prefix.$Project"           # e.g. Hmz.Kolafi
@@ -22,32 +22,32 @@ function New-File { param($p, $c) New-Dir (Split-Path $p); Set-Content -Path $p 
 # ── directories ───────────────────────────────────────────────────────────────
 New-Dir $dir
 foreach ($d in @(
-        "src\$ns.Core\ContributorAggregate\Events",
-        "src\$ns.Core\ContributorAggregate\Handlers",
-        "src\$ns.Core\ContributorAggregate\Specifications",
-        "src\$ns.Core\Interfaces",
-        "src\$ns.Core\Services",
-        "src\$ns.UseCases\Contributors\Create",
-        "src\$ns.UseCases\Contributors\Get",
-        "src\$ns.UseCases\Contributors\List",
-        "src\$ns.UseCases\Contributors\Update",
-        "src\$ns.UseCases\Contributors\Delete",
-        "src\$ns.Infrastructure\Data\Config",
-        "src\$ns.Infrastructure\Data\Migrations",
-        "src\$ns.Infrastructure\Data\Queries",
-        "src\$ns.Infrastructure\Email",
-        "src\$ns.Web\Configurations",
-        "src\$ns.Web\Contributors",
-        "src\$ns.Web\Extensions",
-        "src\$ns.Web\Properties",
-        "src\$ns.Web\wwwroot",
-        "src\$ns.AspireHost",
-        "src\$ns.ServiceDefaults",
-        "tests\$ns.UnitTests\Core\Services",
-        "tests\$ns.IntegrationTests\Data",
-        "tests\$ns.FunctionalTests\Contributors",
-        "tests\$ns.AspireTests"
-    )) { New-Dir "$dir\$d" }
+    "src\$ns.Core\ContributorAggregate\Events",
+    "src\$ns.Core\ContributorAggregate\Handlers",
+    "src\$ns.Core\ContributorAggregate\Specifications",
+    "src\$ns.Core\Interfaces",
+    "src\$ns.Core\Services",
+    "src\$ns.UseCases\Contributors\Create",
+    "src\$ns.UseCases\Contributors\Get",
+    "src\$ns.UseCases\Contributors\List",
+    "src\$ns.UseCases\Contributors\Update",
+    "src\$ns.UseCases\Contributors\Delete",
+    "src\$ns.Infrastructure\Data\Config",
+    "src\$ns.Infrastructure\Data\Migrations",
+    "src\$ns.Infrastructure\Data\Queries",
+    "src\$ns.Infrastructure\Email",
+    "src\$ns.Web\Configurations",
+    "src\$ns.Web\Contributors",
+    "src\$ns.Web\Extensions",
+    "src\$ns.Web\Properties",
+    "src\$ns.Web\wwwroot",
+    "src\$ns.AspireHost",
+    "src\$ns.ServiceDefaults",
+    "tests\$ns.UnitTests\Core\Services",
+    "tests\$ns.IntegrationTests\Data",
+    "tests\$ns.FunctionalTests\Contributors",
+    "tests\$ns.AspireTests"
+  )) { New-Dir "$dir\$d" }
 
 # ── solution file (.slnx) ────────────────────────────────────────────────────
 New-File "$dir\$ns.slnx" @"
@@ -73,6 +73,7 @@ New-File "$dir\$ns.slnx" @"
     <Project Path="src/$ns.ServiceDefaults/$ns.ServiceDefaults.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/$ns.AspireTests/$ns.AspireTests.csproj" />
     <Project Path="tests/$ns.FunctionalTests/$ns.FunctionalTests.csproj">
       <BuildDependency Project="src/$ns.Web/$ns.Web.csproj" />
     </Project>
@@ -216,6 +217,9 @@ New-File "$dir\.runsettings" @'
 $coreCsproj = "src\$ns.Core\$ns.Core.csproj"
 New-File "$dir\$coreCsproj" @"
 <Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <Content Remove="`$HOME\.nuget\packages\vogen\**\Vogen.targets" />
+  </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Ardalis.GuardClauses" />
     <PackageReference Include="Ardalis.Result" />
@@ -433,6 +437,11 @@ New-File "$dir\tests\$ns.UnitTests\$ns.UnitTests.csproj" @"
     <PackageReference Include="Mediator.SourceGenerator" />
   </ItemGroup>
   <ItemGroup>
+    <None Update="xunit.runner.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\..\src\$ns.Core\$ns.Core.csproj" />
     <ProjectReference Include="..\..\src\$ns.UseCases\$ns.UseCases.csproj" />
   </ItemGroup>
@@ -456,6 +465,11 @@ New-File "$dir\tests\$ns.IntegrationTests\$ns.IntegrationTests.csproj" @"
     <PackageReference Include="xunit" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Update="xunit.runner.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\$ns.Infrastructure\$ns.Infrastructure.csproj" />
@@ -520,9 +534,52 @@ New-File "$dir\tests\$ns.AspireTests\$ns.AspireTests.csproj" @"
 "@
 
 # ── xunit.runner.json for test parallelism ────────────────────────────────────
-$xunitJson = '{ "parallelizeAssembly": true, "parallelizeTestCollections": true }'
+$xunitJson = @'
+{
+  "shadowCopy": false,
+  "parallelizeAssembly": true,
+  "parallelizeTestCollections": true,
+  "maxParallelThreads": 0
+}
+'@
 New-File "$dir\tests\$ns.UnitTests\xunit.runner.json"        $xunitJson
 New-File "$dir\tests\$ns.IntegrationTests\xunit.runner.json" $xunitJson
+New-File "$dir\tests\$ns.FunctionalTests\xunit.runner.json"  $xunitJson
+
+# ── GlobalUsings.cs for test projects + AspireHost ─────────────────────────────
+New-File "$dir\tests\$ns.UnitTests\GlobalUsings.cs" @"
+global using System.Runtime.CompilerServices;
+global using Ardalis.SharedKernel;
+global using Shouldly;
+global using Mediator;
+global using Microsoft.Extensions.Logging;
+global using NSubstitute;
+global using Xunit;
+"@
+
+New-File "$dir\tests\$ns.IntegrationTests\GlobalUsings.cs" @"
+global using Ardalis.SharedKernel;
+global using Microsoft.EntityFrameworkCore;
+global using Microsoft.Extensions.DependencyInjection;
+global using NSubstitute;
+global using Shouldly;
+global using Xunit;
+"@
+
+New-File "$dir\tests\$ns.FunctionalTests\GlobalUsings.cs" @"
+global using Ardalis.HttpClientTestExtensions;
+global using Microsoft.AspNetCore.Hosting;
+global using Microsoft.AspNetCore.Mvc.Testing;
+global using Microsoft.Extensions.DependencyInjection;
+global using Microsoft.Extensions.Hosting;
+global using Microsoft.Extensions.Logging;
+global using Shouldly;
+global using Xunit;
+"@
+
+New-File "$dir\src\$ns.AspireHost\GlobalUsings.cs" @"
+global using Aspire.Hosting;
+"@
 
 Write-Host ""
 Write-Host "✅ Solution scaffolded at: $dir" -ForegroundColor Green
