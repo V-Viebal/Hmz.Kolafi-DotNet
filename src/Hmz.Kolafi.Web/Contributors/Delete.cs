@@ -1,10 +1,12 @@
 ﻿using Hmz.Kolafi.Core.ContributorAggregate;
+using Hmz.Kolafi.Core.FeatureFlags;
 using Hmz.Kolafi.UseCases.Contributors.Delete;
 using Hmz.Kolafi.Web.Extensions;
 using Microsoft.AspNetCore.Http.HttpResults;
 
 namespace Hmz.Kolafi.Web.Contributors;
 
+[ModuleFeature(FeatureFlags.ContributorsModule)]
 public class Delete
   : Endpoint<DeleteContributorRequest,
              Results<NoContent,

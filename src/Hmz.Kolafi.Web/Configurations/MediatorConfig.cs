@@ -1,7 +1,9 @@
 ﻿using Ardalis.SharedKernel;
 using Hmz.Kolafi.Core.ContributorAggregate;
+using Hmz.Kolafi.Core.UserAggregate;
 using Hmz.Kolafi.Infrastructure;
 using Hmz.Kolafi.UseCases.Contributors.Create;
+using Hmz.Kolafi.UseCases.Users.SignIn;
 
 namespace Hmz.Kolafi.Web.Configurations;
 
@@ -20,8 +22,8 @@ public static class MediatorConfig
       // Supply any TYPE from each assembly you want scanned (the generator finds the assembly from the type)
       options.Assemblies =
       [
-        typeof(Contributor),                       // Core
-        typeof(CreateContributorCommand),         // UseCases
+        typeof(Contributor),                       // Core (also discovers User handlers)
+        typeof(CreateContributorCommand),         // UseCases (also discovers User Use Cases)
         typeof(InfrastructureServiceExtensions), // Infrastructure
         typeof(MediatorConfig)                  // Web
       ];

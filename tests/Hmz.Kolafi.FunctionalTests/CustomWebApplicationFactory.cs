@@ -1,14 +1,13 @@
 ﻿using Hmz.Kolafi.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
-using Testcontainers.MsSql;
+using Testcontainers.PostgreSql;
 
 namespace Hmz.Kolafi.FunctionalTests;
 
 public class CustomWebApplicationFactory<TProgram> : WebApplicationFactory<TProgram>, IAsyncLifetime where TProgram : class
 {
-  private readonly MsSqlContainer _dbContainer = new MsSqlBuilder()
-    .WithImage("mcr.microsoft.com/mssql/server:2022-latest")
-    .WithPassword("Your_password123!")
+  private readonly PostgreSqlContainer _dbContainer = new PostgreSqlBuilder()
+    .WithImage("postgres:17-alpine")
     .Build();
 
   public async Task InitializeAsync()
@@ -80,11 +79,12 @@ public class CustomWebApplicationFactory<TProgram> : WebApplicationFactory<TProg
             services.Remove(descriptor);
           }
 
-          // Add ApplicationDbContext using the Testcontainers SQL Server instance
+          // Add ApplicationDbContext using the Testcontainers PostgreSQL instance
           services.AddDbContext<AppDbContext>((provider, options) =>
           {
-            options.UseSqlServer(_dbContainer.GetConnectionString());
+            options.UseNpgsql(_dbContainer.GetConnectionString());
           });
         });
   }
 }
+

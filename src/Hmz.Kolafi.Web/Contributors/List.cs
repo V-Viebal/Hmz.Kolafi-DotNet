@@ -1,10 +1,12 @@
 ﻿using Hmz.Kolafi.Core.ContributorAggregate;
+using Hmz.Kolafi.Core.FeatureFlags;
 using Hmz.Kolafi.UseCases.Contributors;
 using Hmz.Kolafi.UseCases.Contributors.List;
 using FluentValidation;
 
 namespace Hmz.Kolafi.Web.Contributors;
 
+[ModuleFeature(FeatureFlags.ContributorsModule)]
 public class List(IMediator mediator) : Endpoint<ListContributorsRequest, ContributorListResponse, ListContributorsMapper>
 {
   private readonly IMediator _mediator = mediator;

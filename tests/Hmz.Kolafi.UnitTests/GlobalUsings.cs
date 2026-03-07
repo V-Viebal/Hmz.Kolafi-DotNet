@@ -1,7 +1,13 @@
 ﻿global using System.Runtime.CompilerServices;
 global using Ardalis.SharedKernel;
 global using Hmz.Kolafi.Core.ContributorAggregate;
+global using Hmz.Kolafi.Core.Interfaces;
+global using Hmz.Kolafi.Core.SharedKernel;
+global using Hmz.Kolafi.Core.UserAggregate;
 global using Hmz.Kolafi.UseCases.Contributors.Create;
+global using Hmz.Kolafi.UseCases.Users;
+global using Hmz.Kolafi.UseCases.Users.GetProfile;
+global using Hmz.Kolafi.UseCases.Users.SignIn;
 global using Shouldly;
 global using Mediator;
 global using Microsoft.Extensions.Logging;

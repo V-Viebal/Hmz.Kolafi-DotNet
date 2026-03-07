@@ -2,13 +2,15 @@
 
 namespace Hmz.Kolafi.Infrastructure.Data.Config;
 
-public class ContributorConfiguration : IEntityTypeConfiguration<Contributor>
+public class ContributorConfiguration : BaseEntityConfiguration<Contributor>
 {
-  public void Configure(EntityTypeBuilder<Contributor> builder)
+  override protected void ConfigureEntitySpecific(EntityTypeBuilder<Contributor> builder)
   {
-    builder.Property(entity => entity.Id)
-      .HasValueGenerator<VogenIdValueGenerator<AppDbContext, Contributor, ContributorId>>()
+    // Primary key and value object conversion
+    builder.HasKey(x => x.Id);
+    builder.Property(x => x.Id)
       .HasVogenConversion()
+      .UseIdentityByDefaultColumn()
       .IsRequired();
 
     builder.Property(entity => entity.Name)

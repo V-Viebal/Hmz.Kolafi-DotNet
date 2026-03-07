@@ -1,4 +1,5 @@
 ﻿using Hmz.Kolafi.Core.ContributorAggregate;
+using Hmz.Kolafi.Core.FeatureFlags;
 using Hmz.Kolafi.UseCases.Contributors;
 using Hmz.Kolafi.UseCases.Contributors.Get;
 using Hmz.Kolafi.UseCases.Contributors.Update;
@@ -7,6 +8,7 @@ using Microsoft.AspNetCore.Http.HttpResults;
 
 namespace Hmz.Kolafi.Web.Contributors;
 
+[ModuleFeature(FeatureFlags.ContributorsModule)]
 public class Update(IMediator mediator)
   : Endpoint<
         UpdateContributorRequest,

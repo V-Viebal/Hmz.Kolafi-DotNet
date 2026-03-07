@@ -1,7 +1,8 @@
 ﻿using Vogen;
 
 [assembly: VogenDefaults(
-        staticAbstractsGeneration: StaticAbstractsGeneration.MostCommon | StaticAbstractsGeneration.InstanceMethodsAndProperties)]
+        staticAbstractsGeneration: StaticAbstractsGeneration.MostCommon | StaticAbstractsGeneration.InstanceMethodsAndProperties,
+        deserializationStrictness: DeserializationStrictness.AllowAnything)]
 
 
 namespace Hmz.Kolafi.Core.ContributorAggregate;

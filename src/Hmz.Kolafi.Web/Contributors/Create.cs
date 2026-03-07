@@ -1,5 +1,6 @@
 ﻿using System.ComponentModel.DataAnnotations;
 using Hmz.Kolafi.Core.ContributorAggregate;
+using Hmz.Kolafi.Core.FeatureFlags;
 using Hmz.Kolafi.UseCases.Contributors.Create;
 using Hmz.Kolafi.Web.Extensions;
 using FluentValidation;
@@ -12,6 +13,7 @@ namespace Hmz.Kolafi.Web.Contributors;
 // is the recommended approach. More files, but fewer merge conflicts and easier to 
 // see what changed in a given commit or PR.
 
+[ModuleFeature(FeatureFlags.ContributorsModule)]
 public class Create(IMediator mediator)
   : Endpoint<CreateContributorRequest,
           Results<Created<CreateContributorResponse>,

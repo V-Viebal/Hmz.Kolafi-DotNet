@@ -1,8 +1,14 @@
 ﻿using Hmz.Kolafi.Core.ContributorAggregate.Events;
+using Hmz.Kolafi.Core.SharedKernel;
 
 namespace Hmz.Kolafi.Core.ContributorAggregate;
 
-public class Contributor(ContributorName name) : EntityBase<Contributor, ContributorId>, IAggregateRoot
+/// <summary>
+/// Contributor aggregate root.
+/// Uses FullAuditableEntity for built-in auditing, soft-delete, and optimistic locking.
+/// </summary>
+public class Contributor(ContributorName name)
+  : FullAuditableEntity<Contributor, ContributorId>, IAggregateRoot
 {
   public ContributorName Name { get; private set; } = name;
   public ContributorStatus Status { get; private set; } = ContributorStatus.NotSet;

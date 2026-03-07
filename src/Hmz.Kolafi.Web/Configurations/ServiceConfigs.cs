@@ -1,6 +1,7 @@
 ﻿using Hmz.Kolafi.Core.Interfaces;
 using Hmz.Kolafi.Infrastructure;
 using Hmz.Kolafi.Infrastructure.Email;
+using Hmz.Kolafi.Web.Services;
 
 namespace Hmz.Kolafi.Web.Configurations;
 
@@ -8,6 +9,10 @@ public static class ServiceConfigs
 {
   public static IServiceCollection AddServiceConfigs(this IServiceCollection services, Microsoft.Extensions.Logging.ILogger logger, WebApplicationBuilder builder)
   {
+    // Register ICurrentUser — required by Infrastructure interceptors for audit/soft-delete
+    services.AddHttpContextAccessor();
+    services.AddScoped<ICurrentUser, CurrentUserService>();
+
     services.AddInfrastructureServices(builder.Configuration, logger)
             .AddMediatorSourceGen(logger);
 

@@ -83,11 +83,51 @@ After running the script, ensure every generated file matches the patterns below
 
 #### 2a. Domain Layer (`{PREFIX}.{PROJECT}.Core`)
 
-**Aggregate Root** (one per domain concept):
+**Entity Base Class Hierarchy** (SharedKernel):
+
+The project provides a layered entity hierarchy for cross-cutting concerns:
+
+| Base Class | Provides | When to use |
+|------------|----------|-------------|
+| `EntityBase<T, TId>` (Ardalis) | ID, domain events | No auditing needed |
+| `AuditableEntity<T, TId>` | + CreatedAt/By, ModifiedAt/By | Audit trail only |
+| `FullAuditableEntity<T, TId>` | + IsDeleted, DeletedAt/By, RowVersion | Most entities (recommended) |
+
+```csharp
+// SharedKernel/AuditableEntity.cs
+public abstract class AuditableEntity<TEntity, TId>
+  : EntityBase<TEntity, TId>, IAuditable
+  where TEntity : AuditableEntity<TEntity, TId>
+  where TId : struct, IEquatable<TId>
+{
+  public DateTimeOffset CreatedAt { get; private set; }
+  public string? CreatedBy { get; private set; }
+  public DateTimeOffset ModifiedAt { get; private set; }
+  public string? ModifiedBy { get; private set; }
+  public void SetCreated(DateTimeOffset at, string? by) { ... }
+  public void SetModified(DateTimeOffset at, string? by) { ... }
+}
+
+// SharedKernel/FullAuditableEntity.cs
+public abstract class FullAuditableEntity<TEntity, TId>
+  : AuditableEntity<TEntity, TId>, ISoftDeletable, IHasRowVersion
+  where TEntity : FullAuditableEntity<TEntity, TId>
+  where TId : struct, IEquatable<TId>
+{
+  public bool IsDeleted { get; private set; }
+  public DateTimeOffset? DeletedAt { get; private set; }
+  public string? DeletedBy { get; private set; }
+  public uint RowVersion { get; private set; } // PostgreSQL xmin
+  public void SoftDelete(DateTimeOffset at, string? by) { ... }
+  public void Restore() { ... }
+}
+```
+
+**Aggregate Root** (one per domain concept, inherits from FullAuditableEntity):
 ```csharp
 // {Entity}.cs in {Entity}Aggregate/
 public class {Entity}(/* value-object params */) 
-    : EntityBase<{Entity}, {Entity}Id>, IAggregateRoot
+    : FullAuditableEntity<{Entity}, {Entity}Id>, IAggregateRoot
 {
     // Private setters – immutable by default
     // Methods mutate state and RegisterDomainEvent(new XyzEvent(this))
@@ -207,6 +247,8 @@ public class Create{Entity}Handler(IRepository<{Entity}> _repository)
 ```
 
 **DTO**:
+> **Note on DTO Placement**: If DTOs (Data Transfer Objects) are used across multiple layers, they MUST be defined in the `{PREFIX}.{PROJECT}.Core` project (inward). Otherwise, they should be placed within the specific project layer (e.g., `UseCases` or `Web`) so that outward layers can refer to them. Every common/cross-concern usage should be defined inward.
+
 ```csharp
 public record {Entity}DTO(int Id, string Name);
 ```
@@ -295,35 +337,64 @@ public class EventDispatchInterceptor(IDomainEventDispatcher dispatcher) : SaveC
 }
 ```
 
-**InfrastructureServiceExtensions**:
+**InfrastructureServiceExtensions** (with feature-flag-gated modules):
 ```csharp
-public static IServiceCollection AddInfrastructureServices(
-    this IServiceCollection services, ConfigurationManager config, ILogger logger)
+public static class InfrastructureServiceExtensions
 {
+  public static IServiceCollection AddInfrastructureServices(
+    this IServiceCollection services, ConfigurationManager config, ILogger logger)
+  {
+    // ── Shared infrastructure (always registered) ──────────────────────
     string? conn = config.GetConnectionString("cleanarchitecture")
                 ?? config.GetConnectionString("DefaultConnection")
                 ?? config.GetConnectionString("SqliteConnection");
     Guard.Against.Null(conn);
 
     services.AddScoped<EventDispatchInterceptor>();
+    services.AddScoped<AuditableInterceptor>();
+    services.AddScoped<SoftDeleteInterceptor>();
     services.AddScoped<IDomainEventDispatcher, MediatorDomainEventDispatcher>();
 
-    services.AddDbContext<AppDbContext>((provider, options) =>
-    {
-        var interceptor = provider.GetRequiredService<EventDispatchInterceptor>();
-        if (config.GetConnectionString("cleanarchitecture") != null
-            || config.GetConnectionString("DefaultConnection") != null)
-            options.UseSqlServer(conn);
-        else
-            options.UseSqlite(conn);
-        options.AddInterceptors(interceptor);
-    });
+    services.AddDbContext<AppDbContext>((provider, options) => { /* DB setup */ });
 
     services.AddScoped(typeof(IRepository<>), typeof(EfRepository<>))
             .AddScoped(typeof(IReadRepository<>), typeof(EfRepository<>));
+    services.AddHybridCache();
+
+    // Cross-cutting auth infrastructure (Logto) — always registered
+    services.Configure<LogtoConfiguration>(config.GetSection(LogtoConfiguration.SectionName));
+    services.AddScoped<ILogtoUserService, LogtoUserService>();
+
+    // ── Feature-flagged business modules ───────────────────────────────
+    services.AddModuleIf(FeatureFlags.ContributorsModule, config, logger, AddContributorsModule);
+    services.AddModuleIf(FeatureFlags.UsersModule, config, logger, AddUsersModule);
 
     logger.LogInformation("{Project} services registered", "Infrastructure");
     return services;
+  }
+
+  // Each module method contains ONLY business-domain services.
+  private static void AddContributorsModule(IServiceCollection services, ConfigurationManager config)
+  {
+    services.AddScoped<IListContributorsQueryService, ListContributorsQueryService>()
+            .AddScoped<IDeleteContributorService, DeleteContributorService>();
+  }
+
+  private static void AddUsersModule(IServiceCollection services, ConfigurationManager config)
+  {
+    services.AddScoped<ICachedUserProfileService, CachedUserProfileService>();
+  }
+
+  /// Reusable helper: registers a module's services only if its feature flag is enabled.
+  private static void AddModuleIf(
+    this IServiceCollection services, string featureFlagName,
+    ConfigurationManager config, ILogger logger,
+    Action<IServiceCollection, ConfigurationManager> registerModule)
+  {
+    var isEnabled = config.GetSection("FeatureManagement").GetValue<bool>(featureFlagName);
+    if (isEnabled) { registerModule(services, config); logger.LogInformation("Module {Module} registered", featureFlagName); }
+    else { logger.LogInformation("Module {Module} DISABLED", featureFlagName); }
+  }
 }
 ```
 
@@ -363,7 +434,9 @@ var startupLogger = loggerFactory.CreateLogger<Program>();
 startupLogger.LogInformation("Starting web host");
 
 builder.Services.AddOptionConfigs(builder.Configuration, startupLogger, builder);
+builder.Services.AddFeatureFlagConfig(builder.Configuration, startupLogger); // ← feature flags
 builder.Services.AddServiceConfigs(startupLogger, builder);
+builder.Services.AddAuthenticationConfigs(builder.Configuration, startupLogger);
 
 builder.Services.AddFastEndpoints()
                 .SwaggerDocument(o => { o.ShortSchemaNames = true; });
@@ -393,22 +466,49 @@ public static WebApplicationBuilder AddLoggerConfigs(this WebApplicationBuilder 
 }
 ```
 
-**Configurations/MiddlewareConfig.cs**:
+**Configurations/FeatureFlagConfig.cs** (registers Microsoft.FeatureManagement):
 ```csharp
+using Microsoft.FeatureManagement;
+
+public static class FeatureFlagConfig
+{
+  public static IServiceCollection AddFeatureFlagConfig(
+    this IServiceCollection services, IConfiguration configuration, ILogger logger)
+  {
+    services.AddFeatureManagement(configuration.GetSection("FeatureManagement"));
+    logger.LogInformation("{Config} registered", "FeatureManagement");
+    return services;
+  }
+}
+```
+
+**Configurations/MiddlewareConfig.cs** (with feature-flag-gated endpoint filtering):
+```csharp
+using {PREFIX}.{PROJECT}.Core.FeatureFlags;
+using Microsoft.FeatureManagement;
+using System.Reflection;
+
 public static async Task<IApplicationBuilder> UseAppMiddlewareAndSeedDatabase(this WebApplication app)
 {
-    if (app.Environment.IsDevelopment())
-    {
-        app.UseDeveloperExceptionPage();
-        app.UseShowAllServicesMiddleware();
-    }
-    else
-    {
-        app.UseDefaultExceptionHandler(); // FastEndpoints
-        app.UseHsts();
-    }
+    if (app.Environment.IsDevelopment()) { app.UseDeveloperExceptionPage(); }
+    else { app.UseDefaultExceptionHandler(); app.UseHsts(); }
 
-    app.UseFastEndpoints();
+    app.UseHttpsRedirection();
+    app.UseAuthentication();
+    app.UseAuthorization();
+
+    // Feature-flag-gated endpoint registration:
+    // Endpoints tagged with [ModuleFeature("X")] are only registered when flag "X" is enabled.
+    app.UseFastEndpoints(c =>
+    {
+      c.Endpoints.Filter = ep =>
+      {
+        var attr = ep.EndpointType.GetCustomAttribute<ModuleFeatureAttribute>();
+        if (attr is null) return true; // no module tag → always registered
+        var fm = app.Services.GetRequiredService<IFeatureManager>();
+        return fm.IsEnabledAsync(attr.FeatureName).GetAwaiter().GetResult();
+      };
+    });
 
     if (app.Environment.IsDevelopment())
     {
@@ -416,14 +516,9 @@ public static async Task<IApplicationBuilder> UseAppMiddlewareAndSeedDatabase(th
         app.MapScalarApiReference(); // Scalar API docs
     }
 
-    app.UseHttpsRedirection();
-
     var shouldMigrate = app.Environment.IsDevelopment()
         || app.Configuration.GetValue<bool>("Database:ApplyMigrationsOnStartup");
-    if (shouldMigrate)
-    {
-        // MigrateDatabaseAsync + SeedDatabaseAsync helpers (see full example)
-    }
+    if (shouldMigrate) { /* MigrateDatabaseAsync + SeedDatabaseAsync */ }
 
     return app;
 }
@@ -451,8 +546,11 @@ public static IServiceCollection AddMediatorSourceGen(
 }
 ```
 
-**FastEndpoint** (one file per endpoint, example for Create):
+**FastEndpoint** (one file per endpoint, example for Create — with `[ModuleFeature]`):
 ```csharp
+using {PREFIX}.{PROJECT}.Core.FeatureFlags;
+
+[ModuleFeature(FeatureFlags.{Entity}sModule)]  // ← gates this endpoint behind a feature flag
 public class Create(IMediator mediator)
     : Endpoint<CreateRequest,
               Results<Created<CreateResponse>, ValidationProblem, ProblemHttpResult>>
@@ -469,8 +567,8 @@ public class Create(IMediator mediator)
             s.ExampleRequest = new CreateRequest { Name = "Example" };
         });
         Tags("{Entity}s");
-        Description(b => b
-            .Accepts<CreateRequest>("application/json")
+        Description(b =>
+            b.Accepts<CreateRequest>("application/json")
             .Produces<CreateResponse>(201, "application/json")
             .ProducesProblem(400)
             .ProducesProblem(500));
@@ -618,6 +716,8 @@ AspireTests → AspireHost
 | OpenTelemetry.Instrumentation.Http | 1.13.0 |
 | OpenTelemetry.Instrumentation.Runtime | 1.13.0 |
 | Aspire.Hosting.Testing | 9.5.1 |
+| Microsoft.FeatureManagement | 4.0.0 |
+| Microsoft.FeatureManagement.AspNetCore | 4.0.0 |
 | Vogen | 8.0.2 |
 
 #### ✅ 3d. Key Conventions
@@ -695,6 +795,15 @@ in `Web.csproj` to work correctly as an analyzer/source generator.
 <Content Remove="...\.nuget\packages\vogen\8.0.2\contentFiles\any\netstandard2.0\Vogen.targets" />
 ```
 
+⚠️ **Vogen + PostgreSQL EF Core Identity**:
+When using PostgreSQL identity columns (via `.UseIdentityByDefaultColumn()`), EF Core initially creates entities with `default` Vogen structs before the database assigns the ID. To prevent `ValueObjectValidationException`:
+1. Add `deserializationStrictness: DeserializationStrictness.AllowAnything` to the `[assembly: VogenDefaults(...)]` attribute (usually in your ID or Core assembly).
+2. Explicitly tell Vogen to generate the EF Core value converter by adding `[EfCoreConverter<YourId>]` in the Infrastructure project's `VogenEfCoreConverters.cs`.
+3. In your Entity Configuration, use `.HasVogenConversion()` instead of a manual `.HasConversion(...)` for the ID property.
+
+⚠️ **Database Agnosticism (Raw SQL)**:
+Avoid `FromSqlRaw` or hardcoded queries (e.g. Dapper) for basic projections. PostgreSQL requires quoted identifiers (e.g., `"Id"`) which breaks compatibility with SQL Server. Always prefer pure EF Core LINQ `.Select()` projections which correctly translate to any database provider's dialect.
+
 ⚠️ **Connection string priority**: Infrastructure resolves in order:
 1. `"cleanarchitecture"` (Aspire orchestration)
 2. `"DefaultConnection"` (SQL Server explicit)
@@ -729,7 +838,7 @@ src/{ns}.Core/{Entity}Aggregate/
 ```
 
 Checklist:
-- [ ] Aggregate root inherits `EntityBase<T, TId>, IAggregateRoot`
+- [ ] Aggregate root inherits `FullAuditableEntity<T, TId>, IAggregateRoot` (or `AuditableEntity` for audit-only)
 - [ ] Every state-changing method calls `RegisterDomainEvent(new XyzEvent(this))`
 - [ ] All setters are `private set`
 - [ ] IDs use `[ValueObject<int>]` with positive validation
@@ -762,7 +871,7 @@ src/{ns}.UseCases/{Entity}s/
 Rules:
 - Commands return `Result` or `Result<T>` (never throw)
 - Queries use `IReadRepository<T>` — never `IRepository<T>`
-- Complex list queries implement a dedicated `I{Entity}QueryService` interface (raw SQL in Infrastructure)
+- Complex list queries implement a dedicated `I{Entity}QueryService` interface (prefer EF Core LINQ `.Select()` projections over Raw SQL to maintain database provider agnosticism)
 - Handlers are registered automatically by `Mediator.SourceGenerator`
 
 ### 6c. Implement Infrastructure (Infrastructure project)
@@ -776,8 +885,8 @@ src/{ns}.Infrastructure/Data/
 
 Checklist:
 - [ ] Add `DbSet<{Entity}> {Entity}s => Set<{Entity}>();` to `AppDbContext`
-- [ ] Create `{Entity}Configuration` with Vogen converters and `HasValueGenerator`
-- [ ] Register query service in `InfrastructureServiceExtensions`
+- [ ] Create `{Entity}Configuration` using `.HasVogenConversion()` and `.UseIdentityByDefaultColumn()` (PostgreSQL identity)
+- [ ] Register query service in the module's `Add{Module}Module` method (feature-flag-gated)
 - [ ] Run migration: `dotnet ef migrations add Add{Entity} --project ... --startup-project ...`
 
 ### 6d. Expose via Web API (Web project)
@@ -791,7 +900,11 @@ src/{ns}.Web/{Entity}s/
 └── Delete.cs                             ← DELETE /{Entity}s/{id}
 ```
 
-Each endpoint file contains: `Endpoint<TReq, TRes>`, `Validator<TReq>`, request/response records.
+Checklist:
+- [ ] Each endpoint file contains: `Endpoint<TReq, TRes>`, `Validator<TReq>`, request/response records
+- [ ] Tag every endpoint with `[ModuleFeature(FeatureFlags.{Module}Module)]`
+- [ ] Add the feature flag constant to `Core/FeatureFlags/FeatureFlags.cs` if new module
+- [ ] Add the flag to `appsettings.json` under `"FeatureManagement"`
 
 ---
 
@@ -1520,3 +1633,115 @@ codebase (use cases, handlers, endpoints) is untouched because they depend only 
 > }
 > ```
 > Add `NetArchTest.Rules` to `UnitTests.csproj` for this.
+
+---
+
+## Section 13 — Feature Flag Management
+
+> **Purpose:** Ship modules independently. Enable/disable business domains per customer or
+> environment without redeployment. Feature flags gate **business domain modules only** —
+> cross-cutting infrastructure (auth, logging, database) is **never** behind a flag.
+
+### 13a. Architecture
+
+```mermaid
+flowchart TD
+    A["appsettings.json\nFeatureManagement section"] --> B["Layer 1: Endpoint Filtering\n(MiddlewareConfig.cs)"]
+    A --> C["Layer 2: Conditional DI\n(InfrastructureServiceExtensions.cs)"]
+    B --> D["Disabled → Endpoint not registered → HTTP 404"]
+    C --> E["Disabled → Module services not in DI container"]
+```
+
+**Three-layer isolation:**
+
+| Layer | Where | What happens when flag is OFF |
+|-------|-------|------------------------------|
+| Endpoint filtering | `MiddlewareConfig.cs` `UseFastEndpoints()` filter | Endpoint not registered → 404 |
+| Conditional DI | `InfrastructureServiceExtensions.AddModuleIf()` | Module services not in DI |
+| Configuration | `appsettings.json` `"FeatureManagement"` section | Single source of truth |
+
+### 13b. What Goes Behind a Flag vs. What Doesn't
+
+> ⚠️ **CRITICAL RULE:** Feature flags gate business domain modules ONLY.
+> Cross-cutting infrastructure must ALWAYS be registered.
+
+| Category | Examples | Behind flag? |
+|----------|----------|--------------|
+| **Business domain** | Contributors query service, Users profile cache | ✅ YES |
+| **Auth / Identity** | Logto config, `ILogtoUserService`, JWT | ❌ NEVER |
+| **Database** | `AppDbContext`, EF interceptors, repositories | ❌ NEVER |
+| **Logging** | Serilog, OpenTelemetry | ❌ NEVER |
+| **Caching infra** | `HybridCache` | ❌ NEVER |
+| **Messaging** | MassTransit, RabbitMQ | ❌ NEVER |
+
+### 13c. Adding a New Module
+
+**Step 1 — Add feature flag constant** (`Core/FeatureFlags/FeatureFlags.cs`):
+```csharp
+public static class FeatureFlags
+{
+  public const string ContributorsModule = "ContributorsModule";
+  public const string UsersModule = "UsersModule";
+  public const string OrdersModule = "OrdersModule";  // ← new
+}
+```
+
+**Step 2 — Tag endpoints** with `[ModuleFeature]`:
+```csharp
+[ModuleFeature(FeatureFlags.OrdersModule)]
+public class CreateOrder : Endpoint<CreateOrderRequest, ...> { ... }
+```
+
+**Step 3 — Add module DI method** in `InfrastructureServiceExtensions.cs`:
+```csharp
+private static void AddOrdersModule(IServiceCollection services, ConfigurationManager config)
+{
+  services.AddScoped<IOrderQueryService, OrderQueryService>();
+}
+```
+
+**Step 4 — Wire the flag** in the main method:
+```csharp
+services.AddModuleIf(FeatureFlags.OrdersModule, config, logger, AddOrdersModule);
+```
+
+**Step 5 — Add to config** (`appsettings.json`):
+```json
+"FeatureManagement": {
+  "ContributorsModule": true,
+  "UsersModule": true,
+  "OrdersModule": true
+}
+```
+
+### 13d. Disabling a Module
+
+Set the flag to `false` in `appsettings.json` and restart:
+```json
+"FeatureManagement": {
+  "ContributorsModule": false
+}
+```
+
+Effects:
+- All Contributors endpoints → **404** (not registered)
+- Contributors DI services → **not in container**
+- Other modules → completely unaffected
+
+### 13e. NuGet Packages
+
+| Package | Project | Purpose |
+|---------|---------|---------|
+| `Microsoft.FeatureManagement.AspNetCore` | Web | `IFeatureManager`, ASP.NET Core integration |
+| `Microsoft.FeatureManagement` | Infrastructure | Config-based flag reads for DI gating |
+
+### 13f. Core Files
+
+| File | Layer | Purpose |
+|------|-------|---------|
+| `Core/FeatureFlags/FeatureFlags.cs` | Core | Module flag name constants |
+| `Core/FeatureFlags/ModuleFeatureAttribute.cs` | Core | `[ModuleFeature]` attribute |
+| `Web/Configurations/FeatureFlagConfig.cs` | Web | Registers `Microsoft.FeatureManagement` |
+| `Web/Configurations/MiddlewareConfig.cs` | Web | Endpoint filter in `UseFastEndpoints()` |
+| `Infrastructure/InfrastructureServiceExtensions.cs` | Infra | `AddModuleIf()` helper |
+| `appsettings.json` | Config | `"FeatureManagement"` section |

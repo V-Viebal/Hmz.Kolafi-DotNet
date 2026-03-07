@@ -2,12 +2,13 @@
 
 var builder = DistributedApplication.CreateBuilder(args);
 
-// Add SQL Server container
-var sqlServer = builder.AddSqlServer("sqlserver")
-  .WithLifetime(ContainerLifetime.Persistent);
+// Add PostgreSQL container
+var postgres = builder.AddPostgres("postgres")
+  .WithLifetime(ContainerLifetime.Persistent)
+  .WithPgAdmin();
 
 // Add the database
-var cleanArchDb = sqlServer.AddDatabase("cleanarchitecture");
+var cleanArchDb = postgres.AddDatabase("cleanarchitecture");
 
 // Papercut SMTP container for email testing
 var papercut = builder.AddContainer("papercut", "jijiechen/papercut", "latest")

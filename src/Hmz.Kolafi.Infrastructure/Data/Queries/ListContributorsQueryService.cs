@@ -16,12 +16,12 @@ public class ListContributorsQueryService : IListContributorsQueryService
 
   public async Task<UseCases.PagedResult<ContributorDto>> ListAsync(int page, int perPage)
   {
-    var items = await _db.Contributors.FromSqlRaw("SELECT Id, Name, PhoneNumber_CountryCode, PhoneNumber_Number, PhoneNumber_Extension FROM Contributors") // don't fetch other big columns
+    var items = await _db.Contributors
+      .AsNoTracking()
       .OrderBy(c => c.Id)
       .Skip((page - 1) * perPage)
       .Take(perPage)
       .Select(c => new ContributorDto(c.Id, c.Name, c.PhoneNumber ?? PhoneNumber.Unknown))
-      .AsNoTracking()
       .ToListAsync();
 
     int totalCount = await _db.Contributors.CountAsync();
