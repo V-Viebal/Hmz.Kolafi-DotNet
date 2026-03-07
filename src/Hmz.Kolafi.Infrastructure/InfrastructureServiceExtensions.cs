@@ -75,8 +75,13 @@ public static class InfrastructureServiceExtensions
 
     // ── Feature-flagged business modules ───────────────────────────────
 
-    services.AddModuleIf(FeatureFlags.ContributorsModule, config, logger, AddContributorsModule);
-    services.AddModuleIf(FeatureFlags.UsersModule, config, logger, AddUsersModule);
+    // For each module, we list the interfaces it exposes to Mediator handlers.
+    // If disabled, DispatchProxy creates throwing fakes of these interfaces to satisfy DI.
+    services.AddModuleIf(FeatureFlags.ContributorsModule, config, logger, AddContributorsModule,
+      typeof(IListContributorsQueryService), typeof(IDeleteContributorService));
+      
+    services.AddModuleIf(FeatureFlags.UsersModule, config, logger, AddUsersModule,
+      typeof(ICachedUserProfileService));
 
     // ───────────────────────────────────────────────────────────────────
 
@@ -112,13 +117,16 @@ public static class InfrastructureServiceExtensions
 
   /// <summary>
   /// Conditionally registers a module's services if its feature flag is enabled.
+  /// If disabled, registers "fake" throwing proxies for the provided interface types so that 
+  /// unconditionally generated Mediator handlers still pass ASP.NET Core DI validation on startup.
   /// </summary>
   private static void AddModuleIf(
     this IServiceCollection services,
     string featureFlagName,
     ConfigurationManager config,
     ILogger logger,
-    Action<IServiceCollection, ConfigurationManager> registerModule)
+    Action<IServiceCollection, ConfigurationManager> registerModule,
+    params Type[] moduleInterfaces)
   {
     var isEnabled = config.GetSection("FeatureManagement")
                          .GetValue<bool>(featureFlagName);
@@ -130,7 +138,35 @@ public static class InfrastructureServiceExtensions
     }
     else
     {
-      logger.LogInformation("Module {Module} is DISABLED — skipping service registration", featureFlagName);
+      logger.LogInformation("Module {Module} is DISABLED — registering empty proxies", featureFlagName);
+      
+      // We must register a fake instance for each interface to satisfy ASP.NET Core DI ValidateOnBuild
+      // because Mediator dynamically registers all handlers, which demand these interfaces.
+      foreach (var type in moduleInterfaces)
+      {
+         var proxyType = typeof(DisabledServiceProxy<>).MakeGenericType(type);
+         var createMethod = proxyType.GetMethod(nameof(DisabledServiceProxy<object>.Create), System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public);
+         var proxyInstance = createMethod!.Invoke(null, null);
+
+         services.AddScoped(type, _ => proxyInstance!);
+      }
     }
+  }
+
+  /// <summary>
+  /// Generates a proxy that implements a given interface but throws an exception on any method call.
+  /// This ensures disabled modules cannot be accidentally invoked, while keeping the DI graph valid.
+  /// </summary>
+  public class DisabledServiceProxy<T> : System.Reflection.DispatchProxy
+  {
+      protected override object? Invoke(System.Reflection.MethodInfo? targetMethod, object?[]? args)
+      {
+          throw new InvalidOperationException($"The module containing {typeof(T).Name} is currently disabled by a feature flag.");
+      }
+
+      public static T Create()
+      {
+          return Create<T, DisabledServiceProxy<T>>();
+      }
   }
 }
