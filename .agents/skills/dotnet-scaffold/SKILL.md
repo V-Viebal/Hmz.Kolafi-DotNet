@@ -366,13 +366,8 @@ public static class InfrastructureServiceExtensions
     services.AddScoped<ILogtoUserService, LogtoUserService>();
 
     // ── Feature-flagged business modules ───────────────────────────────
-    // ── Feature-flagged business modules ───────────────────────────────
-    // For each module, we list the interfaces it exposes to Mediator handlers.
-    // If disabled, DispatchProxy creates throwing fakes of these interfaces to satisfy DI.
-    services.AddModuleIf(FeatureFlags.ContributorsModule, config, logger, AddContributorsModule,
-      typeof(IListContributorsQueryService), typeof(IDeleteContributorService));
-    services.AddModuleIf(FeatureFlags.UsersModule, config, logger, AddUsersModule,
-      typeof(ICachedUserProfileService));
+    services.AddModuleIf(FeatureFlags.ContributorsModule, config, logger, AddContributorsModule);
+    services.AddModuleIf(FeatureFlags.UsersModule, config, logger, AddUsersModule);
 
     logger.LogInformation("{Project} services registered", "Infrastructure");
     return services;
@@ -390,45 +385,15 @@ public static class InfrastructureServiceExtensions
     services.AddScoped<ICachedUserProfileService, CachedUserProfileService>();
   }
 
-  /// <summary>
-  /// Conditionally registers a module's services if its feature flag is enabled.
-  /// If disabled, registers "fake" throwing proxies for the provided interface types so that 
-  /// unconditionally generated Mediator handlers still pass ASP.NET Core DI validation on startup.
-  /// </summary>
+  /// Reusable helper: registers a module's services only if its feature flag is enabled.
   private static void AddModuleIf(
-    this IServiceCollection services,
-    string featureFlagName,
-    ConfigurationManager config,
-    ILogger logger,
-    Action<IServiceCollection, ConfigurationManager> registerModule,
-    params Type[] moduleInterfaces)
+    this IServiceCollection services, string featureFlagName,
+    ConfigurationManager config, ILogger logger,
+    Action<IServiceCollection, ConfigurationManager> registerModule)
   {
     var isEnabled = config.GetSection("FeatureManagement").GetValue<bool>(featureFlagName);
-
-    if (isEnabled)
-    {
-      registerModule(services, config);
-      logger.LogInformation("Module {Module} services registered", featureFlagName);
-    }
-    else
-    {
-      logger.LogInformation("Module {Module} is DISABLED — registering empty proxies", featureFlagName);
-      foreach (var type in moduleInterfaces)
-      {
-         var proxyType = typeof(DisabledServiceProxy<>).MakeGenericType(type);
-         var createMethod = proxyType.GetMethod(nameof(DisabledServiceProxy<object>.Create), System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public);
-         var proxyInstance = createMethod!.Invoke(null, null);
-         services.AddSingleton(type, proxyInstance!);
-      }
-    }
-  }
-
-  public class DisabledServiceProxy<T> : System.Reflection.DispatchProxy
-  {
-      protected override object? Invoke(System.Reflection.MethodInfo? targetMethod, object?[]? args) =>
-          throw new InvalidOperationException($"The module containing {typeof(T).Name} is currently disabled by a feature flag.");
-
-      public static T Create() => Create<T, DisabledServiceProxy<T>>();
+    if (isEnabled) { registerModule(services, config); logger.LogInformation("Module {Module} registered", featureFlagName); }
+    else { logger.LogInformation("Module {Module} DISABLED", featureFlagName); }
   }
 }
 ```
