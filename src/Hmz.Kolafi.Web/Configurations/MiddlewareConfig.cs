@@ -1,9 +1,6 @@
-﻿using Ardalis.ListStartupServices;
-using Hmz.Kolafi.Core.FeatureFlags;
+using Ardalis.ListStartupServices;
 using Hmz.Kolafi.Infrastructure.Data;
-using Microsoft.FeatureManagement;
 using Scalar.AspNetCore;
-using System.Reflection;
 
 namespace Hmz.Kolafi.Web.Configurations;
 
@@ -26,20 +23,7 @@ public static class MiddlewareConfig
 
     app.UseAuthentication();
     app.UseAuthorization();
-    // Feature-flag-gated endpoint registration:
-    // Endpoints tagged with [ModuleFeature("X")] are only registered when flag "X" is enabled.
-    app.UseFastEndpoints(c =>
-    {
-      c.Endpoints.Filter = ep =>
-      {
-        var attr = ep.EndpointType.GetCustomAttribute<ModuleFeatureAttribute>();
-        if (attr is null) return true; // no module tag → always registered
-
-        var featureManager = app.Services.GetRequiredService<IFeatureManager>();
-        return featureManager.IsEnabledAsync(attr.FeatureName)
-                             .GetAwaiter().GetResult();
-      };
-    });
+    app.UseFastEndpoints();
 
     if (app.Environment.IsDevelopment())
     {

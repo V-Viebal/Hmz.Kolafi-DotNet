@@ -1,4 +1,3 @@
-﻿using Hmz.Kolafi.Core.FeatureFlags;
 using Hmz.Kolafi.Core.Interfaces;
 using Hmz.Kolafi.Core.Services;
 using Hmz.Kolafi.Core.UserAggregate;
@@ -61,7 +60,6 @@ public static class InfrastructureServiceExtensions
 
     // ── Cross-cutting identity infrastructure (always registered) ──────
     // Auth/identity (Logto) is infrastructure, NOT a business domain module.
-    // It must always be available regardless of feature flags.
     services.Configure<LogtoConfiguration>(config.GetSection(LogtoConfiguration.SectionName));
     services.AddHttpClient("LogtoManagement", (sp, client) =>
     {
@@ -73,10 +71,10 @@ public static class InfrastructureServiceExtensions
     });
     services.AddScoped<ILogtoUserService, LogtoUserService>();
 
-    // ── Feature-flagged business modules ───────────────────────────────
+    // ── Business modules ──────────────────────────────────────────────
 
-    services.AddModuleIf(FeatureFlags.ContributorsModule, config, logger, AddContributorsModule);
-    services.AddModuleIf(FeatureFlags.UsersModule, config, logger, AddUsersModule);
+    AddContributorsModule(services, config);
+    AddUsersModule(services, config);
 
     // ───────────────────────────────────────────────────────────────────
 
@@ -88,7 +86,7 @@ public static class InfrastructureServiceExtensions
   // ── Module registration methods ────────────────────────────────────────
   // Each method contains ONLY business-domain services for that module.
   // Cross-cutting infrastructure (DB, auth, caching, logging) stays in the
-  // shared section above — never behind a feature flag.
+  // shared section above.
 
   /// <summary>
   /// Registers Contributors module services (query services, domain services).
@@ -106,31 +104,5 @@ public static class InfrastructureServiceExtensions
   private static void AddUsersModule(IServiceCollection services, ConfigurationManager config)
   {
     services.AddScoped<ICachedUserProfileService, CachedUserProfileService>();
-  }
-
-  // ── Helper ──────────────────────────────────────────────────────────────
-
-  /// <summary>
-  /// Conditionally registers a module's services if its feature flag is enabled.
-  /// </summary>
-  private static void AddModuleIf(
-    this IServiceCollection services,
-    string featureFlagName,
-    ConfigurationManager config,
-    ILogger logger,
-    Action<IServiceCollection, ConfigurationManager> registerModule)
-  {
-    var isEnabled = config.GetSection("FeatureManagement")
-                         .GetValue<bool>(featureFlagName);
-
-    if (isEnabled)
-    {
-      registerModule(services, config);
-      logger.LogInformation("Module {Module} services registered", featureFlagName);
-    }
-    else
-    {
-      logger.LogInformation("Module {Module} is DISABLED — skipping service registration", featureFlagName);
-    }
   }
 }

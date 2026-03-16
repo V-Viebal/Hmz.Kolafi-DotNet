@@ -1,5 +1,5 @@
-﻿using Hmz.Kolafi.Core.ContributorAggregate;
-using Hmz.Kolafi.Core.FeatureFlags;
+using Hmz.Kolafi.Core.ContributorAggregate;
+
 using Hmz.Kolafi.UseCases.Contributors;
 using Hmz.Kolafi.UseCases.Contributors.Get;
 using Hmz.Kolafi.Web.Extensions;
@@ -7,7 +7,7 @@ using Microsoft.AspNetCore.Http.HttpResults;
 
 namespace Hmz.Kolafi.Web.Contributors;
 
-[ModuleFeature(FeatureFlags.ContributorsModule)]
+
 public class GetById(IMediator mediator)
   : Endpoint<GetContributorByIdRequest,
              Results<Ok<ContributorRecord>,

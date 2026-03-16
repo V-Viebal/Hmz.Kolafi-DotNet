@@ -1,5 +1,5 @@
 using System.Security.Claims;
-using Hmz.Kolafi.Core.FeatureFlags;
+
 using Hmz.Kolafi.UseCases.Users;
 using Hmz.Kolafi.UseCases.Users.GetProfile;
 using Hmz.Kolafi.Web.Extensions;
@@ -10,7 +10,7 @@ namespace Hmz.Kolafi.Web.Users;
 /// <summary>
 /// GET /api/v1/users/profiles/me — returns the current authenticated user's profile.
 /// </summary>
-[ModuleFeature(FeatureFlags.UsersModule)]
+
 public class GetMyProfile(IMediator mediator)
   : EndpointWithoutRequest<
       Results<Ok<UserProfileResponse>,

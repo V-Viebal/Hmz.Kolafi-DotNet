@@ -337,7 +337,7 @@ public class EventDispatchInterceptor(IDomainEventDispatcher dispatcher) : SaveC
 }
 ```
 
-**InfrastructureServiceExtensions** (with feature-flag-gated modules):
+**InfrastructureServiceExtensions**:
 ```csharp
 public static class InfrastructureServiceExtensions
 {
@@ -365,9 +365,9 @@ public static class InfrastructureServiceExtensions
     services.Configure<LogtoConfiguration>(config.GetSection(LogtoConfiguration.SectionName));
     services.AddScoped<ILogtoUserService, LogtoUserService>();
 
-    // ── Feature-flagged business modules ───────────────────────────────
-    services.AddModuleIf(FeatureFlags.ContributorsModule, config, logger, AddContributorsModule);
-    services.AddModuleIf(FeatureFlags.UsersModule, config, logger, AddUsersModule);
+    // ── Business modules ──────────────────────────────────────────────
+    AddContributorsModule(services, config);
+    AddUsersModule(services, config);
 
     logger.LogInformation("{Project} services registered", "Infrastructure");
     return services;
@@ -383,17 +383,6 @@ public static class InfrastructureServiceExtensions
   private static void AddUsersModule(IServiceCollection services, ConfigurationManager config)
   {
     services.AddScoped<ICachedUserProfileService, CachedUserProfileService>();
-  }
-
-  /// Reusable helper: registers a module's services only if its feature flag is enabled.
-  private static void AddModuleIf(
-    this IServiceCollection services, string featureFlagName,
-    ConfigurationManager config, ILogger logger,
-    Action<IServiceCollection, ConfigurationManager> registerModule)
-  {
-    var isEnabled = config.GetSection("FeatureManagement").GetValue<bool>(featureFlagName);
-    if (isEnabled) { registerModule(services, config); logger.LogInformation("Module {Module} registered", featureFlagName); }
-    else { logger.LogInformation("Module {Module} DISABLED", featureFlagName); }
   }
 }
 ```
@@ -434,7 +423,6 @@ var startupLogger = loggerFactory.CreateLogger<Program>();
 startupLogger.LogInformation("Starting web host");
 
 builder.Services.AddOptionConfigs(builder.Configuration, startupLogger, builder);
-builder.Services.AddFeatureFlagConfig(builder.Configuration, startupLogger); // ← feature flags
 builder.Services.AddServiceConfigs(startupLogger, builder);
 builder.Services.AddAuthenticationConfigs(builder.Configuration, startupLogger);
 
@@ -466,28 +454,8 @@ public static WebApplicationBuilder AddLoggerConfigs(this WebApplicationBuilder 
 }
 ```
 
-**Configurations/FeatureFlagConfig.cs** (registers Microsoft.FeatureManagement):
+**Configurations/MiddlewareConfig.cs**:
 ```csharp
-using Microsoft.FeatureManagement;
-
-public static class FeatureFlagConfig
-{
-  public static IServiceCollection AddFeatureFlagConfig(
-    this IServiceCollection services, IConfiguration configuration, ILogger logger)
-  {
-    services.AddFeatureManagement(configuration.GetSection("FeatureManagement"));
-    logger.LogInformation("{Config} registered", "FeatureManagement");
-    return services;
-  }
-}
-```
-
-**Configurations/MiddlewareConfig.cs** (with feature-flag-gated endpoint filtering):
-```csharp
-using {PREFIX}.{PROJECT}.Core.FeatureFlags;
-using Microsoft.FeatureManagement;
-using System.Reflection;
-
 public static async Task<IApplicationBuilder> UseAppMiddlewareAndSeedDatabase(this WebApplication app)
 {
     if (app.Environment.IsDevelopment()) { app.UseDeveloperExceptionPage(); }
@@ -496,19 +464,7 @@ public static async Task<IApplicationBuilder> UseAppMiddlewareAndSeedDatabase(th
     app.UseHttpsRedirection();
     app.UseAuthentication();
     app.UseAuthorization();
-
-    // Feature-flag-gated endpoint registration:
-    // Endpoints tagged with [ModuleFeature("X")] are only registered when flag "X" is enabled.
-    app.UseFastEndpoints(c =>
-    {
-      c.Endpoints.Filter = ep =>
-      {
-        var attr = ep.EndpointType.GetCustomAttribute<ModuleFeatureAttribute>();
-        if (attr is null) return true; // no module tag → always registered
-        var fm = app.Services.GetRequiredService<IFeatureManager>();
-        return fm.IsEnabledAsync(attr.FeatureName).GetAwaiter().GetResult();
-      };
-    });
+    app.UseFastEndpoints();
 
     if (app.Environment.IsDevelopment())
     {
@@ -546,11 +502,8 @@ public static IServiceCollection AddMediatorSourceGen(
 }
 ```
 
-**FastEndpoint** (one file per endpoint, example for Create — with `[ModuleFeature]`):
+**FastEndpoint** (one file per endpoint, example for Create):
 ```csharp
-using {PREFIX}.{PROJECT}.Core.FeatureFlags;
-
-[ModuleFeature(FeatureFlags.{Entity}sModule)]  // ← gates this endpoint behind a feature flag
 public class Create(IMediator mediator)
     : Endpoint<CreateRequest,
               Results<Created<CreateResponse>, ValidationProblem, ProblemHttpResult>>
@@ -716,8 +669,7 @@ AspireTests → AspireHost
 | OpenTelemetry.Instrumentation.Http | 1.13.0 |
 | OpenTelemetry.Instrumentation.Runtime | 1.13.0 |
 | Aspire.Hosting.Testing | 9.5.1 |
-| Microsoft.FeatureManagement | 4.0.0 |
-| Microsoft.FeatureManagement.AspNetCore | 4.0.0 |
+
 | Vogen | 8.0.2 |
 
 #### ✅ 3d. Key Conventions
@@ -902,9 +854,6 @@ src/{ns}.Web/{Entity}s/
 
 Checklist:
 - [ ] Each endpoint file contains: `Endpoint<TReq, TRes>`, `Validator<TReq>`, request/response records
-- [ ] Tag every endpoint with `[ModuleFeature(FeatureFlags.{Module}Module)]`
-- [ ] Add the feature flag constant to `Core/FeatureFlags/FeatureFlags.cs` if new module
-- [ ] Add the flag to `appsettings.json` under `"FeatureManagement"`
 
 ---
 
@@ -1634,114 +1583,4 @@ codebase (use cases, handlers, endpoints) is untouched because they depend only 
 > ```
 > Add `NetArchTest.Rules` to `UnitTests.csproj` for this.
 
----
 
-## Section 13 — Feature Flag Management
-
-> **Purpose:** Ship modules independently. Enable/disable business domains per customer or
-> environment without redeployment. Feature flags gate **business domain modules only** —
-> cross-cutting infrastructure (auth, logging, database) is **never** behind a flag.
-
-### 13a. Architecture
-
-```mermaid
-flowchart TD
-    A["appsettings.json\nFeatureManagement section"] --> B["Layer 1: Endpoint Filtering\n(MiddlewareConfig.cs)"]
-    A --> C["Layer 2: Conditional DI\n(InfrastructureServiceExtensions.cs)"]
-    B --> D["Disabled → Endpoint not registered → HTTP 404"]
-    C --> E["Disabled → Module services not in DI container"]
-```
-
-**Three-layer isolation:**
-
-| Layer | Where | What happens when flag is OFF |
-|-------|-------|------------------------------|
-| Endpoint filtering | `MiddlewareConfig.cs` `UseFastEndpoints()` filter | Endpoint not registered → 404 |
-| Conditional DI | `InfrastructureServiceExtensions.AddModuleIf()` | Module services not in DI |
-| Configuration | `appsettings.json` `"FeatureManagement"` section | Single source of truth |
-
-### 13b. What Goes Behind a Flag vs. What Doesn't
-
-> ⚠️ **CRITICAL RULE:** Feature flags gate business domain modules ONLY.
-> Cross-cutting infrastructure must ALWAYS be registered.
-
-| Category | Examples | Behind flag? |
-|----------|----------|--------------|
-| **Business domain** | Contributors query service, Users profile cache | ✅ YES |
-| **Auth / Identity** | Logto config, `ILogtoUserService`, JWT | ❌ NEVER |
-| **Database** | `AppDbContext`, EF interceptors, repositories | ❌ NEVER |
-| **Logging** | Serilog, OpenTelemetry | ❌ NEVER |
-| **Caching infra** | `HybridCache` | ❌ NEVER |
-| **Messaging** | MassTransit, RabbitMQ | ❌ NEVER |
-
-### 13c. Adding a New Module
-
-**Step 1 — Add feature flag constant** (`Core/FeatureFlags/FeatureFlags.cs`):
-```csharp
-public static class FeatureFlags
-{
-  public const string ContributorsModule = "ContributorsModule";
-  public const string UsersModule = "UsersModule";
-  public const string OrdersModule = "OrdersModule";  // ← new
-}
-```
-
-**Step 2 — Tag endpoints** with `[ModuleFeature]`:
-```csharp
-[ModuleFeature(FeatureFlags.OrdersModule)]
-public class CreateOrder : Endpoint<CreateOrderRequest, ...> { ... }
-```
-
-**Step 3 — Add module DI method** in `InfrastructureServiceExtensions.cs`:
-```csharp
-private static void AddOrdersModule(IServiceCollection services, ConfigurationManager config)
-{
-  services.AddScoped<IOrderQueryService, OrderQueryService>();
-}
-```
-
-**Step 4 — Wire the flag** in the main method:
-```csharp
-services.AddModuleIf(FeatureFlags.OrdersModule, config, logger, AddOrdersModule);
-```
-
-**Step 5 — Add to config** (`appsettings.json`):
-```json
-"FeatureManagement": {
-  "ContributorsModule": true,
-  "UsersModule": true,
-  "OrdersModule": true
-}
-```
-
-### 13d. Disabling a Module
-
-Set the flag to `false` in `appsettings.json` and restart:
-```json
-"FeatureManagement": {
-  "ContributorsModule": false
-}
-```
-
-Effects:
-- All Contributors endpoints → **404** (not registered)
-- Contributors DI services → **not in container**
-- Other modules → completely unaffected
-
-### 13e. NuGet Packages
-
-| Package | Project | Purpose |
-|---------|---------|---------|
-| `Microsoft.FeatureManagement.AspNetCore` | Web | `IFeatureManager`, ASP.NET Core integration |
-| `Microsoft.FeatureManagement` | Infrastructure | Config-based flag reads for DI gating |
-
-### 13f. Core Files
-
-| File | Layer | Purpose |
-|------|-------|---------|
-| `Core/FeatureFlags/FeatureFlags.cs` | Core | Module flag name constants |
-| `Core/FeatureFlags/ModuleFeatureAttribute.cs` | Core | `[ModuleFeature]` attribute |
-| `Web/Configurations/FeatureFlagConfig.cs` | Web | Registers `Microsoft.FeatureManagement` |
-| `Web/Configurations/MiddlewareConfig.cs` | Web | Endpoint filter in `UseFastEndpoints()` |
-| `Infrastructure/InfrastructureServiceExtensions.cs` | Infra | `AddModuleIf()` helper |
-| `appsettings.json` | Config | `"FeatureManagement"` section |
