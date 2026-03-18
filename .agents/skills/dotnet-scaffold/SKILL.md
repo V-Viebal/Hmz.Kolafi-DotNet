@@ -626,55 +626,52 @@ AspireTests → AspireHost
 | Ardalis.SmartEnum | 8.2.0 |
 | Ardalis.Specification | 9.3.1 |
 | Ardalis.Specification.EntityFrameworkCore | 9.3.1 |
-| Azure.Identity | 1.17.0 |
-| coverlet.collector | 6.0.4 |
+| coverlet.collector | 8.0.0 |
 | FastEndpoints | 7.1.1 |
-| FastEndpoints.ApiExplorer | 2.2.0 |
 | FastEndpoints.Swagger | 7.1.1 |
-| MailKit | 4.14.1 |
+| MailKit | 4.15.1 |
+| MimeKit | 4.15.1 |
 | Mediator.Abstractions | 3.0.1 |
 | Mediator.SourceGenerator | 3.0.1 |
+| Microsoft.AspNetCore.Authentication.JwtBearer | 10.0.0 |
 | Microsoft.AspNetCore.Mvc.Testing | 10.0.0 |
 | Microsoft.EntityFrameworkCore.InMemory | 10.0.0 |
 | Microsoft.EntityFrameworkCore.Relational | 10.0.0 |
 | Microsoft.EntityFrameworkCore.Design | 10.0.0 |
 | Microsoft.EntityFrameworkCore.Sqlite | 10.0.0 |
-| Microsoft.EntityFrameworkCore.SqlServer | 10.0.0 |
+| Microsoft.Extensions.Caching.Hybrid | 10.4.0 |
 | Microsoft.Extensions.Configuration | 10.0.0 |
 | Microsoft.Extensions.Logging | 10.0.0 |
 | Microsoft.Extensions.Logging.Abstractions | 10.0.0 |
 | Microsoft.Extensions.Options.ConfigurationExtensions | 10.0.0 |
-| Microsoft.NET.Test.Sdk | 18.0.1 |
-| NimblePros.Metronome | 0.4.1 |
+| Microsoft.NET.Test.Sdk | 18.3.0 |
+| Npgsql.EntityFrameworkCore.PostgreSQL | 10.0.0 |
 | NSubstitute | 5.3.0 |
 | ReportGenerator | 5.5.0 |
-| Scalar.AspNetCore | 2.10.3 |
-| Serilog.AspNetCore | 9.0.0 |
+| Scalar.AspNetCore | 2.13.6 |
+| Serilog.AspNetCore | 10.0.0 |
 | Serilog.Sinks.OpenTelemetry | 4.2.0 |
 | Shouldly | 4.3.0 |
 | SQLite | 3.13.0 |
-| Swashbuckle.AspNetCore | 6.5.0 |
-| Swashbuckle.AspNetCore.Annotations | 6.5.0 |
 | Testcontainers | 4.3.0 |
-| Testcontainers.MsSql | 4.3.0 |
+| Testcontainers.PostgreSql | 4.3.0 |
 | xunit | 2.9.3 |
 | xunit.runner.visualstudio | 3.1.5 |
-| Aspire.Hosting.AppHost | 13.0.0 |
-| Aspire.Hosting.SqlServer | 13.0.0 |
+| Aspire.Hosting.AppHost | 13.1.2 |
+| Aspire.Hosting.PostgreSQL | 13.1.2 |
 | Microsoft.Extensions.Http.Resilience | 10.0.0 |
 | Microsoft.Extensions.ServiceDiscovery | 10.0.0 |
-| OpenTelemetry.Exporter.OpenTelemetryProtocol | 1.14.0 |
-| OpenTelemetry.Extensions.Hosting | 1.14.0 |
-| OpenTelemetry.Instrumentation.AspNetCore | 1.13.0 |
-| OpenTelemetry.Instrumentation.Http | 1.13.0 |
-| OpenTelemetry.Instrumentation.Runtime | 1.13.0 |
-| Aspire.Hosting.Testing | 9.5.1 |
-
-| Vogen | 8.0.2 |
+| OpenTelemetry.Exporter.OpenTelemetryProtocol | 1.15.0 |
+| OpenTelemetry.Extensions.Hosting | 1.15.0 |
+| OpenTelemetry.Instrumentation.AspNetCore | 1.15.1 |
+| OpenTelemetry.Instrumentation.Http | 1.15.0 |
+| OpenTelemetry.Instrumentation.Runtime | 1.15.0 |
+| Aspire.Hosting.Testing | 13.1.2 |
+| Vogen | 8.0.5 |
 
 #### ✅ 3d. Key Conventions
 - `Directory.Build.props`: `TargetFramework=net10.0`, `Nullable=enable`, `ImplicitUsings=enable`, `LangVersion=latest`, `TreatWarningsAsErrors=true`, `ManagePackageVersionsCentrally=true`
-- `global.json`: `"version": "10.0.100"`, `"rollForward": "latestMajor"`, `"allowPrerelease": true`
+- `global.json`: `"version": "10.0.200"`, `"rollForward": "latestMajor"`
 - `.editorconfig`: file-scoped namespaces (`csharp_style_namespace_declarations = file_scoped:warning`), 2-space indent, `TreatWarningsAsErrors` 
 - `.runsettings`: parallel xUnit test execution (`MaxCpuCount=0`, `ParallelizeAssembly=true`)
 - All `*.cs` use **file-scoped namespaces**
@@ -731,10 +728,6 @@ dotnet run --project src/{PREFIX}.{PROJECT}.Web
 ---
 
 ### Step 5 — Flags & Known Gotchas
-
-⚠️ **AspireTests targets net9.0** — the `Aspire.Hosting.Testing` package only supports net9.0 at
-the time of writing. The `TargetFramework` override in `AspireTests.csproj` is intentional and
-overrides the global `net10.0` in `Directory.Build.props`.
 
 ⚠️ **Mediator.SourceGenerator** must have `PrivateAssets=all` and the full `IncludeAssets` list
 in `Web.csproj` to work correctly as an analyzer/source generator.
@@ -838,7 +831,7 @@ src/{ns}.Infrastructure/Data/
 Checklist:
 - [ ] Add `DbSet<{Entity}> {Entity}s => Set<{Entity}>();` to `AppDbContext`
 - [ ] Create `{Entity}Configuration` using `.HasVogenConversion()` and `.UseIdentityByDefaultColumn()` (PostgreSQL identity)
-- [ ] Register query service in the module's `Add{Module}Module` method (feature-flag-gated)
+- [ ] Register query service in the module's `Add{Module}Module` method in `InfrastructureServiceExtensions`
 - [ ] Run migration: `dotnet ef migrations add Add{Entity} --project ... --startup-project ...`
 
 ### 6d. Expose via Web API (Web project)

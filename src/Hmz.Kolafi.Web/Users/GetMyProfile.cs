@@ -1,6 +1,5 @@
+﻿using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
-
-using Hmz.Kolafi.UseCases.Users;
 using Hmz.Kolafi.UseCases.Users.GetProfile;
 using Hmz.Kolafi.Web.Extensions;
 using Microsoft.AspNetCore.Http.HttpResults;
@@ -40,7 +39,7 @@ public class GetMyProfile(IMediator mediator)
     ExecuteAsync(CancellationToken ct)
   {
     var userId = HttpContext.User.FindFirstValue(ClaimTypes.NameIdentifier)
-              ?? HttpContext.User.FindFirstValue("sub");
+              ?? HttpContext.User.FindFirstValue(JwtRegisteredClaimNames.Sub);
 
     if (string.IsNullOrEmpty(userId))
     {

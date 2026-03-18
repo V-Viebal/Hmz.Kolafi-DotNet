@@ -1,4 +1,4 @@
-﻿using Hmz.Kolafi.Core.SharedKernel;
+using Hmz.Kolafi.Core.SharedKernel;
 using Hmz.Kolafi.Core.UserAggregate.Events;
 
 namespace Hmz.Kolafi.Core.UserAggregate;
@@ -33,7 +33,7 @@ public class User : FullAuditableEntity<User, UserId>, IAggregateRoot
   {
     Email = Guard.Against.NullOrWhiteSpace(email, nameof(email));
     Name = Guard.Against.NullOrWhiteSpace(name, nameof(name));
-    Roles = Guard.Against.Null(roles, nameof(roles));
+    Roles = roles ?? Roles;
     Picture = picture;
 
     return this;
